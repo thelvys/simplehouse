@@ -5,29 +5,33 @@ from django.db.models.signals import post_save, pre_delete
 from django.dispatch import receiver
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError, PermissionDenied
 from django.db.models import Sum, F
 
-from commonapp.models import TimestampMixin
-from accounts.models import Barber, Client 
-from saloon.models import Salon
-from saloonfinance.models import Currency, CashRegister
+from commonapp.models import TimestampMixin, Currency
+from saloon.models import Salon, Barber
+from saloonfinance.models import CashRegister
 from saloonservices.models import Shave, Hairstyle
+from config.permissions import is_salon_owner, is_assigned_barber, is_salon_manager
 
 class Item(TimestampMixin):
     name = models.CharField(_("Name"), max_length=255)
     item_purpose = models.ManyToManyField(Hairstyle, related_name='items', verbose_name=_("Item purpose"))
     price = models.DecimalField(_("Price"), max_digits=19, decimal_places=2, default=0)
-    currency = models.ForeignKey('Currency', on_delete=models.SET_DEFAULT, default=Currency.get_default, related_name='items', verbose_name=_("Currency"))
+    currency = models.ForeignKey(Currency, on_delete=models.SET_DEFAULT, default=Currency.get_default, related_name='items', verbose_name=_("Currency"))
     exchange_rate = models.DecimalField(_("Exchange rate"), max_digits=10, decimal_places=4, default=1.0)
     amount_in_default_currency = models.DecimalField(_("Amount in default currency"), max_digits=19, decimal_places=2, default=0)
     salon = models.ForeignKey(Salon, on_delete=models.CASCADE, related_name='items', verbose_name=_("Salon"))
     current_stock = models.PositiveIntegerField(_("Current stock"), default=0)
 
     def __str__(self):
-        return self.name
+        return f"{self.name} - {self.salon.name}"
     
     def save(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
+        if user and not (is_salon_owner(user, self.salon) or is_salon_manager(user, self.salon)):
+            raise PermissionDenied(_("You don't have permission to manage inventory items for this salon."))
+        
         if self.currency != Currency.get_default():
             self.amount_in_default_currency = self.price / self.exchange_rate
         else:
@@ -56,7 +60,7 @@ class Item(TimestampMixin):
         unique_together = ['name', 'salon']
 
 class ItemUsed(TimestampMixin):
-    item = models.ForeignKey('Item', on_delete=models.CASCADE, verbose_name=_("Item"))
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, verbose_name=_("Item"))
     shave = models.ForeignKey(Shave, on_delete=models.SET_NULL, null=True, related_name='items_used', verbose_name=_("Shave"))
     barber = models.ForeignKey(Barber, on_delete=models.SET_NULL, null=True, verbose_name=_("Barber"))
     quantity = models.PositiveIntegerField(_("Quantity"))
@@ -64,7 +68,7 @@ class ItemUsed(TimestampMixin):
     salon = models.ForeignKey(Salon, on_delete=models.CASCADE, related_name='items_used', verbose_name=_("Salon"))
 
     def __str__(self):
-        return f"{self.item} - {self.quantity}"
+        return f"{self.item} - {self.quantity} - {self.shave}"
 
     def clean(self):
         if self.quantity <= 0:
@@ -73,8 +77,15 @@ class ItemUsed(TimestampMixin):
             raise ValidationError(_("Not enough items in stock."))
         if self.shave and self.shave.status != 'COMPLETED':
             raise ValidationError(_("Items can only be used for completed shaves."))
+        if self.item.salon != self.salon or (self.shave and self.shave.salon != self.salon) or (self.barber and self.barber.salon != self.salon):
+            raise ValidationError(_("Item, Shave, and Barber must belong to the same salon."))
 
     def save(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
+        if user and not (is_salon_owner(user, self.salon) or is_salon_manager(user, self.salon) or is_assigned_barber(user, self.salon)):
+            raise PermissionDenied(_("You don't have permission to use inventory items for this salon."))
+        
+        self.clean()
         super().save(*args, **kwargs)
         self.item.current_stock -= self.quantity
         self.item.save()
@@ -88,7 +99,7 @@ class ItemPurchase(TimestampMixin):
     item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='purchases', verbose_name=_("Item"))
     quantity = models.PositiveIntegerField(_("Quantity"))
     purchase_price = models.DecimalField(_("Purchase price"), max_digits=19, decimal_places=2)
-    currency = models.ForeignKey('Currency', on_delete=models.SET_DEFAULT, default=Currency.get_default, verbose_name=_("Currency"))
+    currency = models.ForeignKey(Currency, on_delete=models.SET_DEFAULT, default=Currency.get_default, verbose_name=_("Currency"))
     exchange_rate = models.DecimalField(_("Exchange rate"), max_digits=10, decimal_places=4, default=1.0)
     purchase_price_in_default_currency = models.DecimalField(_("Purchase price in default currency"), max_digits=19, decimal_places=2)
     purchase_date = models.DateField(_("Purchase date"), default=timezone.now)
@@ -97,6 +108,10 @@ class ItemPurchase(TimestampMixin):
     salon = models.ForeignKey(Salon, on_delete=models.CASCADE, related_name='item_purchases', verbose_name=_("Salon"))
 
     def save(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
+        if user and not (is_salon_owner(user, self.salon) or is_salon_manager(user, self.salon)):
+            raise PermissionDenied(_("You don't have permission to purchase inventory items for this salon."))
+        
         if self.currency != Currency.get_default():
             self.purchase_price_in_default_currency = self.purchase_price / self.exchange_rate
         else:
@@ -110,6 +125,8 @@ class ItemPurchase(TimestampMixin):
             raise ValidationError(_("Purchase price must be positive."))
         if self.quantity <= 0:
             raise ValidationError(_("Quantity must be positive."))
+        if self.item.salon != self.salon or self.cashregister.salon != self.salon:
+            raise ValidationError(_("Item and Cash Register must belong to the same salon as the purchase."))
 
     def __str__(self):
         return f"{self.item.name} - {self.quantity} - {self.purchase_date}"

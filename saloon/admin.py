@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 from mptt.admin import MPTTModelAdmin
-from .models import Salon, SalonAssignment
+from .models import Salon, Barber, Client, BarberType, SalonPermission
 
 @admin.register(Salon)
 class SalonAdmin(MPTTModelAdmin):
@@ -22,27 +22,49 @@ class SalonAdmin(MPTTModelAdmin):
             return ('owner',)
         return ()
 
-@admin.register(SalonAssignment)
-class SalonAssignmentAdmin(admin.ModelAdmin):
-    list_display = ('barber', 'salon', 'start_date', 'end_date', 'is_active', 'is_current')
-    list_filter = ('is_active', 'salon')
-    search_fields = ('barber__username', 'salon__name')
-    date_hierarchy = 'start_date'
-    ordering = ('-start_date',)
+@admin.register(Barber)
+class BarberAdmin(admin.ModelAdmin):
+    list_display = ('user', 'salon', 'barber_type', 'phone', 'is_active')
+    list_filter = ('salon', 'barber_type', 'is_active')
+    search_fields = ('user__username', 'user__email', 'salon__name')
+    ordering = ('user__username',)
 
     fieldsets = (
-        (None, {'fields': ('barber', 'salon')}),
-        (_('Assignment Period'), {'fields': ('start_date', 'end_date')}),
+        (None, {'fields': ('user', 'salon', 'barber_type')}),
+        (_('Contact Information'), {'fields': ('phone', 'address')}),
+        (_('Employment'), {'fields': ('start_date', 'end_date')}),
         (_('Status'), {'fields': ('is_active',)}),
         (_('Documents'), {'fields': ('contract',)}),
+        (_('Permissions'), {'fields': ('can_manage_finance', 'can_manage_inventory', 'can_manage_shave', 'can_manage_hairstyle', 'can_manage_barbers')}),
     )
 
-    readonly_fields = ('is_current',)
+@admin.register(Client)
+class ClientAdmin(admin.ModelAdmin):
+    list_display = ('user', 'salon', 'phone')
+    list_filter = ('salon',)
+    search_fields = ('user__username', 'user__email', 'salon__name')
+    ordering = ('user__username',)
 
-    def is_current(self, obj):
-        return obj.is_current
-    is_current.boolean = True
-    is_current.short_description = _("Is Current")
+    fieldsets = (
+        (None, {'fields': ('user', 'salon')}),
+        (_('Contact Information'), {'fields': ('phone', 'address')}),
+    )
+
+@admin.register(BarberType)
+class BarberTypeAdmin(admin.ModelAdmin):
+    list_display = ('name', 'description')
+    search_fields = ('name',)
+
+@admin.register(SalonPermission)
+class SalonPermissionAdmin(admin.ModelAdmin):
+    list_display = ('salon', 'user', 'permission_type')
+    list_filter = ('permission_type', 'salon')
+    search_fields = ('salon__name', 'user__username')
+
+    def get_readonly_fields(self, request, obj=None):
+        if obj:  # editing an existing object
+            return ('salon', 'user')
+        return ()
 
 # Optionally, you can customize the admin site header and title
 admin.site.site_header = _("Saloon Management Administration")

@@ -5,20 +5,23 @@ app_name = 'saloonfinance'
 
 urlpatterns = [
     # Cash Register URLs
-    path('cashregisters/', views.CashRegisterListView.as_view(), name='cashregister_list'),
-    path('cashregisters/create/', views.CashRegisterCreateView.as_view(), name='cashregister_create'),
-    path('cashregisters/<int:pk>/update/', views.CashRegisterUpdateView.as_view(), name='cashregister_update'),
-    path('cashregisters/<int:pk>/delete/', views.CashRegisterDeleteView.as_view(), name='cashregister_delete'),
+    path('<int:salon_id>/cashregisters/', views.CashRegisterListView.as_view(), name='cashregister_list'),
+    path('<int:salon_id>/cashregisters/create/', views.CashRegisterCreateView.as_view(), name='cashregister_create'),
+    path('<int:salon_id>/cashregisters/<int:pk>/update/', views.CashRegisterUpdateView.as_view(), name='cashregister_update'),
+    path('<int:salon_id>/cashregisters/<int:pk>/delete/', views.CashRegisterDeleteView.as_view(), name='cashregister_delete'),
 
     # Payment URLs
-    path('payments/', views.PaymentListView.as_view(), name='payment_list'),
-    path('payments/create/', views.PaymentCreateView.as_view(), name='payment_create'),
-    path('payments/<int:pk>/update/', views.PaymentUpdateView.as_view(), name='payment_update'),
-    path('payments/<int:pk>/delete/', views.PaymentDeleteView.as_view(), name='payment_delete'),
+    path('<int:salon_id>/payments/', views.PaymentListView.as_view(), name='payment_list'),
+    path('<int:salon_id>/payments/create/', views.PaymentCreateView.as_view(), name='payment_create'),
+    path('<int:salon_id>/payments/<int:pk>/update/', views.PaymentUpdateView.as_view(), name='payment_update'),
+    path('<int:salon_id>/payments/<int:pk>/delete/', views.PaymentDeleteView.as_view(), name='payment_delete'),
 
-    # Transalon (Transaction) URLs
-    path('transactions/', views.TransalonListView.as_view(), name='transalon_list'),
-    path('transactions/create/', views.TransalonCreateView.as_view(), name='transalon_create'),
-    path('transactions/<int:pk>/update/', views.TransalonUpdateView.as_view(), name='transalon_update'),
-    path('transactions/<int:pk>/delete/', views.TransalonDeleteView.as_view(), name='transalon_delete'),
+    # Transalon URLs
+    path('<int:salon_id>/transalons/', views.TransalonListView.as_view(), name='transalon_list'),
+    path('<int:salon_id>/transalons/create/', views.TransalonCreateView.as_view(), name='transalon_create'),
+    path('<int:salon_id>/transalons/<int:pk>/update/', views.TransalonUpdateView.as_view(), name='transalon_update'),
+    path('<int:salon_id>/transalons/<int:pk>/delete/', views.TransalonDeleteView.as_view(), name='transalon_delete'),
+
+    # HTMX field validation URL
+    path('validate-field/', views.validate_field, name='validate_field'),
 ]

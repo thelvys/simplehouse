@@ -3,13 +3,10 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from mptt.models import MPTTModel, TreeForeignKey
-
 from commonapp.models import TimestampMixin
-
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
-
 
 class Salon(MPTTModel, TimestampMixin):
     name = models.CharField(_("Name"), max_length=255)
@@ -24,43 +21,77 @@ class Salon(MPTTModel, TimestampMixin):
     class MPTTMeta:
         order_insertion_by = ['name']
 
-    def __str__(self):
-        return self.name
-
     class Meta:
         verbose_name = _("Salon")
         verbose_name_plural = _("Salons")
 
-    def get_active_assignments(self):
-        return self.salonassignment_set.filter(is_active=True, end_date__gte=timezone.now().date())
+    def __str__(self):
+        return self.name
 
-    def get_assigned_barbers(self):
-        return [assignment.barber for assignment in self.get_active_assignments()]
+    def get_active_barbers(self):
+        return self.barbers.filter(is_active=True)
 
-class SalonAssignment(TimestampMixin):
-    salon = models.ForeignKey(Salon, on_delete=models.CASCADE, verbose_name=_("Salon"))
-    barber = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name=_("Barber"))
-    contract = models.FileField(_("Contract"), upload_to="contracts/", null=True, blank=True)
-    start_date = models.DateField(_("Start date"))
-    end_date = models.DateField(_("End date"))
-    is_active = models.BooleanField(_("Is active"), default=True)
+class SalonPermission(TimestampMixin):
+    PERMISSION_CHOICES = [
+        ('can_manage', _('Can manage salon')),
+        ('can_read', _('Can read salon data')),
+        ('can_manage_finance', _('Can manage finance')),
+        ('can_manage_inventory', _('Can manage inventory')),
+        ('can_manage_shave', _('Can manage shave')),
+        ('can_manage_hairstyle', _('Can manage hairstyle')),
+        ('can_manage_barbers', _('Can manage barbers')),
+    ]
+
+    salon = models.ForeignKey(Salon, on_delete=models.CASCADE, related_name='permissions')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='salon_permissions')
+    permission_type = models.CharField(_('permission type'), max_length=50, choices=PERMISSION_CHOICES)
+
+    class Meta:
+        unique_together = ('salon', 'user', 'permission_type')
+        verbose_name = _("Salon Permission")
+        verbose_name_plural = _("Salon Permissions")
 
     def __str__(self):
-        return f"{self.barber.get_full_name()} - {self.salon.name}"
-    
+        return f"{self.user.get_full_name()} - {self.salon.name} - {self.get_permission_type_display()}"
+
+class BarberType(TimestampMixin):
+    name = models.CharField(_("Name"), max_length=255)
+    description = models.TextField(_("Description"), blank=True)
+
+    def __str__(self):
+        return self.name
+
+class Barber(TimestampMixin):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name=_("user"))
+    salon = models.ForeignKey(Salon, on_delete=models.CASCADE, related_name='barbers', verbose_name=_("Salon"))
+    barber_type = models.ForeignKey(BarberType, on_delete=models.CASCADE, verbose_name=_("barber type"))
+    contract = models.FileField(_("Contract"), upload_to="contracts/", null=True, blank=True)
+    phone = models.CharField(_("Phone"), max_length=255, null=True, blank=True)
+    address = models.CharField(_("Address"), max_length=255, null=True, blank=True)
+    start_date = models.DateField(_("Start date"))
+    end_date = models.DateField(_("End date"), null=True, blank=True)
+    is_active = models.BooleanField(_("Is active"), default=True)
+    can_manage_finance = models.BooleanField(_("Can manage finance"), default=False)
+    can_manage_inventory = models.BooleanField(_("Can manage inventory"), default=False)
+    can_manage_shave = models.BooleanField(_("Can manage shave"), default=False)
+    can_manage_hairstyle = models.BooleanField(_("Can manage hairstyle"), default=False)
+    can_manage_barbers = models.BooleanField(_("Can manage barbers"), default=False)
+
+    def __str__(self):
+        return self.user.get_full_name()
+
     class Meta:
-        verbose_name = _("Salon assignment")
-        verbose_name_plural = _("Salon assignments")
-        unique_together = [('salon', 'barber', 'start_date')]
+        ordering = ['user__last_name', 'user__first_name']
+        verbose_name = _('Barber')
+        verbose_name_plural = _('Barbers')
 
     def clean(self):
         if self.start_date and self.end_date and self.start_date > self.end_date:
             raise ValidationError(_("Start date must be before end date."))
         
-        overlapping = SalonAssignment.objects.filter(
+        overlapping = Barber.objects.filter(
             salon=self.salon,
-            barber=self.barber,
-            start_date__lte=self.end_date,
+            start_date__lte=self.end_date or timezone.now().date(),
             end_date__gte=self.start_date
         ).exclude(pk=self.pk)
         
@@ -74,4 +105,17 @@ class SalonAssignment(TimestampMixin):
     @property
     def is_current(self):
         today = timezone.now().date()
-        return self.is_active and self.start_date <= today <= self.end_date
+        return self.is_active and self.start_date <= today and (not self.end_date or self.end_date >= today)
+
+class Client(TimestampMixin):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name=_("user"))
+    salon = models.ForeignKey(Salon, on_delete=models.SET_NULL, null=True, blank=True, related_name='clients', verbose_name=_("Preferred Salon"))
+    address = models.CharField(_("Address"), max_length=255, null=True, blank=True)
+    phone = models.CharField(_("Phone"), max_length=255, null=True, blank=True)
+
+    def __str__(self):
+        return self.user.get_full_name()
+
+    class Meta:
+        verbose_name = _("Client")
+        verbose_name_plural = _("Clients")

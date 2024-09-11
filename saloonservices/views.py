@@ -1,14 +1,18 @@
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse_lazy
-from django.http import HttpResponse
-from django.db.models import Q
+from django.shortcuts import get_object_or_404
+from django.http import HttpResponse, JsonResponse
 from django.utils.translation import gettext_lazy as _
-from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
+from django.contrib import messages
+from django.core.exceptions import PermissionDenied
 from .models import Hairstyle, Shave, HairstyleTariffHistory
 from .forms import (
     HairstyleForm, ShaveForm, HairstyleSearchForm, ShaveSearchForm,
-    HairstyleTariffHistoryForm, HairstyleTariffHistorySearchForm
+    HairstyleTariffHistoryForm
 )
+from saloon.models import Salon
+from config.permissions import is_salon_owner, is_assigned_barber
 
 class HtmxResponseMixin:
     def form_valid(self, form):
@@ -20,77 +24,100 @@ class HtmxResponseMixin:
     def get_htmx_response(self):
         return ""
 
-class HairstyleListView(LoginRequiredMixin, ListView):
+class SalonPermissionMixin:
+    def dispatch(self, request, *args, **kwargs):
+        self.salon = get_object_or_404(Salon, pk=self.kwargs['salon_id'])
+        if not (is_salon_owner(request.user, self.salon) or is_assigned_barber(request.user, self.salon)):
+            raise PermissionDenied(_("You don't have permission to access this salon."))
+        return super().dispatch(request, *args, **kwargs)
+
+class HairstyleListView(LoginRequiredMixin, SalonPermissionMixin, ListView):
     model = Hairstyle
     template_name = 'saloonservices/hairstyle_list.html'
     context_object_name = 'hairstyles'
     paginate_by = 10
 
     def get_queryset(self):
-        queryset = super().get_queryset()
-        form = HairstyleSearchForm(self.request.GET)
+        queryset = Hairstyle.objects.filter(salon=self.salon)
+        form = HairstyleSearchForm(self.request.GET, user=self.request.user)
         if form.is_valid():
             name = form.cleaned_data.get('name')
-            salon = form.cleaned_data.get('salon')
             if name:
                 queryset = queryset.filter(name__icontains=name)
-            if salon:
-                queryset = queryset.filter(salon=salon)
         return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['search_form'] = HairstyleSearchForm(self.request.GET)
+        context['search_form'] = HairstyleSearchForm(self.request.GET, user=self.request.user)
+        context['salon'] = self.salon
         return context
 
-class HairstyleCreateView(LoginRequiredMixin, PermissionRequiredMixin, HtmxResponseMixin, CreateView):
+class HairstyleCreateView(LoginRequiredMixin, SalonPermissionMixin, HtmxResponseMixin, CreateView):
     model = Hairstyle
     form_class = HairstyleForm
     template_name = 'saloonservices/hairstyle_form.html'
-    success_url = reverse_lazy('saloonservices:hairstyle_list')
-    permission_required = 'saloonservices.add_hairstyle'
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
+        return kwargs
+
+    def form_valid(self, form):
+        form.instance.salon = self.salon
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse_lazy('saloonservices:hairstyle_list', kwargs={'salon_id': self.salon.id})
 
     def get_htmx_response(self):
-        return _("<div class='alert alert-success' role='alert'>Hairstyle created successfully.</div>")
+        return f"<div class='alert alert-success'>{_('Hairstyle created successfully.')}</div>"
 
-class HairstyleUpdateView(LoginRequiredMixin, PermissionRequiredMixin, HtmxResponseMixin, UpdateView):
+class HairstyleUpdateView(LoginRequiredMixin, SalonPermissionMixin, HtmxResponseMixin, UpdateView):
     model = Hairstyle
     form_class = HairstyleForm
     template_name = 'saloonservices/hairstyle_form.html'
-    success_url = reverse_lazy('saloonservices:hairstyle_list')
-    permission_required = 'saloonservices.change_hairstyle'
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
+        return kwargs
+
+    def get_success_url(self):
+        return reverse_lazy('saloonservices:hairstyle_list', kwargs={'salon_id': self.salon.id})
 
     def get_htmx_response(self):
-        return _("<div class='alert alert-success' role='alert'>Hairstyle updated successfully.</div>")
+        return f"<div class='alert alert-success'>{_('Hairstyle updated successfully.')}</div>"
 
-class HairstyleDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
+class HairstyleDeleteView(LoginRequiredMixin, SalonPermissionMixin, DeleteView):
     model = Hairstyle
-    success_url = reverse_lazy('saloonservices:hairstyle_list')
-    permission_required = 'saloonservices.delete_hairstyle'
+    template_name = 'saloonservices/hairstyle_confirm_delete.html'
+
+    def get_success_url(self):
+        return reverse_lazy('saloonservices:hairstyle_list', kwargs={'salon_id': self.salon.id})
 
     def delete(self, request, *args, **kwargs):
         self.object = self.get_object()
+        success_url = self.get_success_url()
         self.object.delete()
         if request.htmx:
-            return HttpResponse(_("<div class='alert alert-success' role='alert'>Hairstyle deleted successfully.</div>"))
+            return HttpResponse(f"<div class='alert alert-success'>{_('Hairstyle deleted successfully.')}</div>")
         return super().delete(request, *args, **kwargs)
 
-class ShaveListView(LoginRequiredMixin, ListView):
+class ShaveListView(LoginRequiredMixin, SalonPermissionMixin, ListView):
     model = Shave
     template_name = 'saloonservices/shave_list.html'
     context_object_name = 'shaves'
     paginate_by = 10
 
     def get_queryset(self):
-        queryset = super().get_queryset()
-        form = ShaveSearchForm(self.request.GET)
+        queryset = Shave.objects.filter(salon=self.salon)
+        form = ShaveSearchForm(self.request.GET, user=self.request.user)
         if form.is_valid():
             barber = form.cleaned_data.get('barber')
             hairstyle = form.cleaned_data.get('hairstyle')
             client = form.cleaned_data.get('client')
             start_date = form.cleaned_data.get('start_date')
             end_date = form.cleaned_data.get('end_date')
-            salon = form.cleaned_data.get('salon')
             status = form.cleaned_data.get('status')
             if barber:
                 queryset = queryset.filter(barber=barber)
@@ -102,103 +129,110 @@ class ShaveListView(LoginRequiredMixin, ListView):
                 queryset = queryset.filter(date_shave__gte=start_date)
             if end_date:
                 queryset = queryset.filter(date_shave__lte=end_date)
-            if salon:
-                queryset = queryset.filter(salon=salon)
             if status:
                 queryset = queryset.filter(status=status)
         return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['search_form'] = ShaveSearchForm(self.request.GET)
+        context['search_form'] = ShaveSearchForm(self.request.GET, user=self.request.user)
+        context['salon'] = self.salon
         return context
 
-class ShaveCreateView(LoginRequiredMixin, PermissionRequiredMixin, HtmxResponseMixin, CreateView):
+class ShaveCreateView(LoginRequiredMixin, SalonPermissionMixin, HtmxResponseMixin, CreateView):
     model = Shave
     form_class = ShaveForm
     template_name = 'saloonservices/shave_form.html'
-    success_url = reverse_lazy('saloonservices:shave_list')
-    permission_required = 'saloonservices.add_shave'
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
+        return kwargs
+
+    def form_valid(self, form):
+        form.instance.salon = self.salon
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse_lazy('saloonservices:shave_list', kwargs={'salon_id': self.salon.id})
 
     def get_htmx_response(self):
-        return _("<div class='alert alert-success' role='alert'>Shave service created successfully.</div>")
+        return f"<div class='alert alert-success'>{_('Shave created successfully.')}</div>"
 
-class ShaveUpdateView(LoginRequiredMixin, PermissionRequiredMixin, HtmxResponseMixin, UpdateView):
+class ShaveUpdateView(LoginRequiredMixin, SalonPermissionMixin, HtmxResponseMixin, UpdateView):
     model = Shave
     form_class = ShaveForm
     template_name = 'saloonservices/shave_form.html'
-    success_url = reverse_lazy('saloonservices:shave_list')
-    permission_required = 'saloonservices.change_shave'
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
+        return kwargs
+
+    def get_success_url(self):
+        return reverse_lazy('saloonservices:shave_list', kwargs={'salon_id': self.salon.id})
 
     def get_htmx_response(self):
-        return _("<div class='alert alert-success' role='alert'>Shave service updated successfully.</div>")
+        return f"<div class='alert alert-success'>{_('Shave updated successfully.')}</div>"
 
-class ShaveDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
+class ShaveDeleteView(LoginRequiredMixin, SalonPermissionMixin, DeleteView):
     model = Shave
-    success_url = reverse_lazy('saloonservices:shave_list')
-    permission_required = 'saloonservices.delete_shave'
+    template_name = 'saloonservices/shave_confirm_delete.html'
+
+    def get_success_url(self):
+        return reverse_lazy('saloonservices:shave_list', kwargs={'salon_id': self.salon.id})
 
     def delete(self, request, *args, **kwargs):
         self.object = self.get_object()
+        success_url = self.get_success_url()
         self.object.delete()
         if request.htmx:
-            return HttpResponse(_("<div class='alert alert-success' role='alert'>Shave service deleted successfully.</div>"))
+            return HttpResponse(f"<div class='alert alert-success'>{_('Shave deleted successfully.')}</div>")
         return super().delete(request, *args, **kwargs)
 
-class HairstyleTariffHistoryListView(LoginRequiredMixin, ListView):
+class HairstyleTariffHistoryListView(LoginRequiredMixin, SalonPermissionMixin, ListView):
     model = HairstyleTariffHistory
     template_name = 'saloonservices/hairstyletariffhistory_list.html'
     context_object_name = 'tariff_histories'
     paginate_by = 10
 
     def get_queryset(self):
-        queryset = super().get_queryset()
-        form = HairstyleTariffHistorySearchForm(self.request.GET)
-        if form.is_valid():
-            hairstyle = form.cleaned_data.get('hairstyle')
-            start_date = form.cleaned_data.get('start_date')
-            end_date = form.cleaned_data.get('end_date')
-            if hairstyle:
-                queryset = queryset.filter(hairstyle=hairstyle)
-            if start_date:
-                queryset = queryset.filter(effective_date__gte=start_date)
-            if end_date:
-                queryset = queryset.filter(effective_date__lte=end_date)
-        return queryset
+        return HairstyleTariffHistory.objects.filter(hairstyle__salon=self.salon)
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['search_form'] = HairstyleTariffHistorySearchForm(self.request.GET)
-        return context
-
-class HairstyleTariffHistoryCreateView(LoginRequiredMixin, PermissionRequiredMixin, HtmxResponseMixin, CreateView):
+class HairstyleTariffHistoryCreateView(LoginRequiredMixin, SalonPermissionMixin, HtmxResponseMixin, CreateView):
     model = HairstyleTariffHistory
     form_class = HairstyleTariffHistoryForm
     template_name = 'saloonservices/hairstyletariffhistory_form.html'
-    success_url = reverse_lazy('saloonservices:hairstyletariffhistory_list')
-    permission_required = 'saloonservices.add_hairstyletariffhistory'
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
+        return kwargs
+
+    def get_success_url(self):
+        return reverse_lazy('saloonservices:hairstyletariffhistory_list', kwargs={'salon_id': self.salon.id})
 
     def get_htmx_response(self):
-        return _("<div class='alert alert-success' role='alert'>Hairstyle tariff history created successfully.</div>")
+        return f"<div class='alert alert-success'>{_('Hairstyle tariff history created successfully.')}</div>"
 
-class HairstyleTariffHistoryUpdateView(LoginRequiredMixin, PermissionRequiredMixin, HtmxResponseMixin, UpdateView):
-    model = HairstyleTariffHistory
-    form_class = HairstyleTariffHistoryForm
-    template_name = 'saloonservices/hairstyletariffhistory_form.html'
-    success_url = reverse_lazy('saloonservices:hairstyletariffhistory_list')
-    permission_required = 'saloonservices.change_hairstyletariffhistory'
+def validate_field(request):
+    field_name = request.POST.get('field_name')
+    field_value = request.POST.get('field_value')
+    form_class = request.POST.get('form_class')
 
-    def get_htmx_response(self):
-        return _("<div class='alert alert-success' role='alert'>Hairstyle tariff history updated successfully.</div>")
+    form_classes = {
+        'HairstyleForm': HairstyleForm,
+        'ShaveForm': ShaveForm,
+        'HairstyleTariffHistoryForm': HairstyleTariffHistoryForm,
+    }
 
-class HairstyleTariffHistoryDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
-    model = HairstyleTariffHistory
-    success_url = reverse_lazy('saloonservices:hairstyletariffhistory_list')
-    permission_required = 'saloonservices.delete_hairstyletariffhistory'
+    FormClass = form_classes.get(form_class)
+    if not FormClass:
+        return JsonResponse({'error': _("Invalid form class")}, status=400)
 
-    def delete(self, request, *args, **kwargs):
-        self.object = self.get_object()
-        self.object.delete()
-        if request.htmx:
-            return HttpResponse(_("<div class='alert alert-success' role='alert'>Hairstyle tariff history deleted successfully.</div>"))
-        return super().delete(request, *args, **kwargs)
+    form = FormClass({field_name: field_value}, user=request.user)
+    form.is_valid()
+    
+    if field_name in form.errors:
+        return JsonResponse({'error': form.errors[field_name][0]}, status=400)
+    return JsonResponse({'success': _("Field is valid")})

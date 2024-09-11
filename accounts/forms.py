@@ -1,137 +1,74 @@
 from django import forms
-from django.contrib.auth.forms import UserCreationForm, UserChangeForm
+from django.contrib.auth.forms import UserCreationForm, UserChangeForm, AuthenticationForm, PasswordResetForm, SetPasswordForm
 from django.utils.translation import gettext_lazy as _
-from .models import CustomUser, Barber, Client, BarberType
+from .models import CustomUser
 
-class CustomUserCreationForm(UserCreationForm):
+class BootstrapFormMixin:
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name, field in self.fields.items():
+            if isinstance(field.widget, (forms.TextInput, forms.EmailInput, forms.DateInput, forms.PasswordInput)):
+                field.widget.attrs.update({'class': 'form-control'})
+            elif isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs.update({'class': 'form-check-input'})
+            
+            # Add HTMX attributes for real-time validation
+            field.widget.attrs.update({
+                'hx-post': 'validate-field',
+                'hx-trigger': 'blur',
+                'hx-target': f'#{field_name}-errors',
+            })
+
+class CustomUserCreationForm(BootstrapFormMixin, UserCreationForm):
+    email = forms.EmailField(
+        label=_("Email"),
+        max_length=254,
+        widget=forms.EmailInput(attrs={'autocomplete': 'email'})
+    )
+
+    class Meta(UserCreationForm.Meta):
+        model = CustomUser
+        fields = ('email', 'first_name', 'last_name')
+
+class CustomUserChangeForm(BootstrapFormMixin, UserChangeForm):
     class Meta:
         model = CustomUser
         fields = ('email', 'first_name', 'last_name')
-        widgets = {
-            'email': forms.EmailInput(attrs={'class': 'form-control'}),
-            'first_name': forms.TextInput(attrs={'class': 'form-control'}),
-            'last_name': forms.TextInput(attrs={'class': 'form-control'}),
-        }
 
-class CustomUserChangeForm(UserChangeForm):
-    class Meta:
-        model = CustomUser
-        fields = ('email', 'first_name', 'last_name', 'is_active', 'is_staff', 'is_admin')
-        widgets = {
-            'email': forms.EmailInput(attrs={'class': 'form-control'}),
-            'first_name': forms.TextInput(attrs={'class': 'form-control'}),
-            'last_name': forms.TextInput(attrs={'class': 'form-control'}),
-            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'is_staff': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'is_admin': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-        }
-
-class BarberTypeForm(forms.ModelForm):
-    class Meta:
-        model = BarberType
-        fields = ('name', 'description')
-        widgets = {
-            'name': forms.TextInput(attrs={'class': 'form-control'}),
-            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
-        }
-
-class BarberForm(forms.ModelForm):
-    class Meta:
-        model = Barber
-        fields = ('user', 'barber_type', 'address', 'phone')
-        widgets = {
-            'user': forms.Select(attrs={'class': 'form-select'}),
-            'barber_type': forms.Select(attrs={'class': 'form-select'}),
-            'address': forms.TextInput(attrs={'class': 'form-control'}),
-            'phone': forms.TextInput(attrs={'class': 'form-control'}),
-        }
-
-class ClientForm(forms.ModelForm):
-    class Meta:
-        model = Client
-        fields = ('user', 'address', 'phone')
-        widgets = {
-            'user': forms.Select(attrs={'class': 'form-select'}),
-            'address': forms.TextInput(attrs={'class': 'form-control'}),
-            'phone': forms.TextInput(attrs={'class': 'form-control'}),
-        }
-
-class BarberSignUpForm(UserCreationForm):
-    barber_type = forms.ModelChoiceField(
-        queryset=BarberType.objects.all(),
-        required=True,
-        label=_("Barber Type"),
-        widget=forms.Select(attrs={'class': 'form-select'})
-    )
-    address = forms.CharField(
-        max_length=255,
-        required=True,
-        label=_("Address"),
-        widget=forms.TextInput(attrs={'class': 'form-control'})
-    )
-    phone = forms.CharField(
-        max_length=255,
-        required=True,
-        label=_("Phone"),
-        widget=forms.TextInput(attrs={'class': 'form-control'})
+class CustomUserLoginForm(BootstrapFormMixin, AuthenticationForm):
+    username = forms.EmailField(
+        label=_("Email"),
+        max_length=254,
+        widget=forms.EmailInput(attrs={'autocomplete': 'email'})
     )
 
-    class Meta(UserCreationForm.Meta):
-        model = CustomUser
-        fields = ('email', 'first_name', 'last_name', 'password1', 'password2', 'barber_type', 'address', 'phone')
-        widgets = {
-            'email': forms.EmailInput(attrs={'class': 'form-control'}),
-            'first_name': forms.TextInput(attrs={'class': 'form-control'}),
-            'last_name': forms.TextInput(attrs={'class': 'form-control'}),
-            'password1': forms.PasswordInput(attrs={'class': 'form-control'}),
-            'password2': forms.PasswordInput(attrs={'class': 'form-control'}),
-        }
+class CustomPasswordResetForm(BootstrapFormMixin, PasswordResetForm):
+    email = forms.EmailField(
+        label=_("Email"),
+        max_length=254,
+        widget=forms.EmailInput(attrs={'autocomplete': 'email'})
+    )
 
-    def save(self, commit=True):
-        user = super().save(commit=False)
-        user.is_active = False  # Account needs to be activated by an admin
-        if commit:
-            user.save()
-            Barber.objects.create(
-                user=user,
-                barber_type=self.cleaned_data.get('barber_type'),
-                address=self.cleaned_data.get('address'),
-                phone=self.cleaned_data.get('phone')
-            )
-        return user
+class CustomSetPasswordForm(BootstrapFormMixin, SetPasswordForm):
+    new_password1 = forms.CharField(
+        label=_("New password"),
+        widget=forms.PasswordInput(attrs={'autocomplete': 'new-password'}),
+        strip=False,
+    )
+    new_password2 = forms.CharField(
+        label=_("New password confirmation"),
+        strip=False,
+        widget=forms.PasswordInput(attrs={'autocomplete': 'new-password'}),
+    )
 
-class ClientSignUpForm(UserCreationForm):
-    address = forms.CharField(
-        max_length=255,
+class CustomUserSearchForm(BootstrapFormMixin, forms.Form):
+    search = forms.CharField(
+        label=_("Search"),
         required=False,
-        label=_("Address"),
-        widget=forms.TextInput(attrs={'class': 'form-control'})
+        widget=forms.TextInput(attrs={
+            'placeholder': _("Search users..."),
+            'hx-post': 'search-users',
+            'hx-trigger': 'keyup changed delay:500ms',
+            'hx-target': '#user-list',
+        })
     )
-    phone = forms.CharField(
-        max_length=255,
-        required=False,
-        label=_("Phone"),
-        widget=forms.TextInput(attrs={'class': 'form-control'})
-    )
-
-    class Meta(UserCreationForm.Meta):
-        model = CustomUser
-        fields = ('email', 'first_name', 'last_name', 'password1', 'password2', 'address', 'phone')
-        widgets = {
-            'email': forms.EmailInput(attrs={'class': 'form-control'}),
-            'first_name': forms.TextInput(attrs={'class': 'form-control'}),
-            'last_name': forms.TextInput(attrs={'class': 'form-control'}),
-            'password1': forms.PasswordInput(attrs={'class': 'form-control'}),
-            'password2': forms.PasswordInput(attrs={'class': 'form-control'}),
-        }
-
-    def save(self, commit=True):
-        user = super().save(commit=False)
-        if commit:
-            user.save()
-            Client.objects.create(
-                user=user,
-                address=self.cleaned_data.get('address'),
-                phone=self.cleaned_data.get('phone')
-            )
-        return user

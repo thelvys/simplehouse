@@ -1,80 +1,136 @@
 from django import forms
 from django.utils.translation import gettext_lazy as _
-from .models import Salon, SalonAssignment
+from django.contrib.auth import get_user_model
+from .models import Salon, Barber, Client, BarberType, SalonPermission
+from config.permissions import is_salon_owner, is_assigned_barber
 
-class SalonForm(forms.ModelForm):
+CustomUser = get_user_model()
+
+class BootstrapFormMixin:
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name, field in self.fields.items():
+            if isinstance(field.widget, (forms.TextInput, forms.EmailInput, forms.DateInput, forms.NumberInput, forms.URLInput)):
+                field.widget.attrs.update({'class': 'form-control'})
+            elif isinstance(field.widget, forms.Select):
+                field.widget.attrs.update({'class': 'form-select'})
+            elif isinstance(field.widget, forms.Textarea):
+                field.widget.attrs.update({'class': 'form-control', 'rows': 3})
+            elif isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs.update({'class': 'form-check-input'})
+            elif isinstance(field.widget, forms.FileInput):
+                field.widget.attrs.update({'class': 'form-control'})
+            
+            # Add HTMX attributes for real-time validation
+            field.widget.attrs.update({
+                'hx-post': 'validate-field',
+                'hx-trigger': 'blur',
+                'hx-target': f'#{ field_name }-errors',
+            })
+
+class SalonForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Salon
-        fields = ['name', 'description', 'address', 'phone', 'email', 'parent', 'owner', 'is_active']
+        fields = ['name', 'description', 'address', 'phone', 'email', 'parent', 'is_active']
         widgets = {
-            'name': forms.TextInput(attrs={'class': 'form-control'}),
-            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
-            'address': forms.TextInput(attrs={'class': 'form-control'}),
-            'phone': forms.TextInput(attrs={'class': 'form-control'}),
-            'email': forms.EmailInput(attrs={'class': 'form-control'}),
-            'parent': forms.Select(attrs={'class': 'form-select'}),
-            'owner': forms.Select(attrs={'class': 'form-select'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
-class SalonAssignmentForm(forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        if self.user and not self.user.is_superuser:
+            del self.fields['parent']
+            if not is_salon_owner(self.user, self.instance.pk):
+                for field in self.fields:
+                    self.fields[field].disabled = True
+
+class BarberForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
-        model = SalonAssignment
-        fields = ['salon', 'barber', 'contract', 'start_date', 'end_date', 'is_active']
+        model = Barber
+        fields = ['user', 'barber_type', 'contract', 'phone', 'address', 'start_date', 'end_date', 'is_active',
+                  'can_manage_finance', 'can_manage_inventory', 'can_manage_shave', 'can_manage_hairstyle', 'can_manage_barbers']
         widgets = {
-            'salon': forms.Select(attrs={'class': 'form-select'}),
-            'barber': forms.Select(attrs={'class': 'form-select'}),
-            'contract': forms.FileInput(attrs={'class': 'form-control'}),
-            'start_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'end_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'start_date': forms.DateInput(attrs={'type': 'date'}),
+            'end_date': forms.DateInput(attrs={'type': 'date'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'can_manage_finance': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'can_manage_inventory': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'can_manage_shave': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'can_manage_hairstyle': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'can_manage_barbers': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
-    def clean(self):
-        cleaned_data = super().clean()
-        start_date = cleaned_data.get('start_date')
-        end_date = cleaned_data.get('end_date')
+    def __init__(self, *args, **kwargs):
+        self.salon = kwargs.pop('salon', None)
+        super().__init__(*args, **kwargs)
+        if self.salon:
+            self.fields['user'].queryset = CustomUser.objects.filter(is_active=True)
+            self.fields['barber_type'].queryset = BarberType.objects.all()
 
-        if start_date and end_date and start_date > end_date:
-            raise forms.ValidationError(_("Start date must be before end date."))
+class ClientForm(BootstrapFormMixin, forms.ModelForm):
+    class Meta:
+        model = Client
+        fields = ['user', 'address', 'phone']
 
-        return cleaned_data
+    def __init__(self, *args, **kwargs):
+        self.salon = kwargs.pop('salon', None)
+        super().__init__(*args, **kwargs)
+        if self.salon:
+            self.fields['user'].queryset = CustomUser.objects.filter(is_active=True)
 
-class SalonSearchForm(forms.Form):
-    search = forms.CharField(
-        label=_("Search"),
-        max_length=100,
-        required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': _("Search salons...")})
-    )
-    is_active = forms.BooleanField(
-        label=_("Active only"),
-        required=False,
-        initial=True,
-        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
-    )
+class SalonSearchForm(BootstrapFormMixin, forms.Form):
+    name = forms.CharField(max_length=255, required=False, label=_("Salon Name"))
+    address = forms.CharField(max_length=255, required=False, label=_("Address"))
+    is_active = forms.BooleanField(required=False, label=_("Is Active"), widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}))
 
-class SalonAssignmentSearchForm(forms.Form):
-    salon = forms.ModelChoiceField(
-        queryset=Salon.objects.all(),
-        label=_("Salon"),
-        required=False,
-        widget=forms.Select(attrs={'class': 'form-select'})
-    )
-    barber = forms.CharField(
-        label=_("Barber"),
-        max_length=100,
-        required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': _("Barber name...")})
-    )
-    is_active = forms.BooleanField(
-        label=_("Active only"),
-        required=False,
-        initial=True,
-        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
-    )
-    date = forms.DateField(
-        label=_("Date"),
-        required=False,
-        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
-    )
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        
+        # Add HTMX attributes for real-time search
+        self.fields['name'].widget.attrs.update({
+            'hx-post': 'search',
+            'hx-trigger': 'keyup changed delay:500ms',
+            'hx-target': '#salon-list',
+        })
+        self.fields['address'].widget.attrs.update({
+            'hx-post': 'search',
+            'hx-trigger': 'keyup changed delay:500ms',
+            'hx-target': '#salon-list',
+        })
+        self.fields['is_active'].widget.attrs.update({
+            'hx-post': 'search',
+            'hx-trigger': 'change',
+            'hx-target': '#salon-list',
+        })
+
+class SalonPermissionForm(BootstrapFormMixin, forms.Form):
+    user = forms.ModelChoiceField(queryset=CustomUser.objects.all(), label=_("User"))
+    permission_type = forms.ChoiceField(choices=SalonPermission.PERMISSION_CHOICES, label=_("Permission Type"))
+    action = forms.ChoiceField(choices=[('add', _('Add')), ('remove', _('Remove'))], label=_("Action"))
+
+    def __init__(self, *args, **kwargs):
+        self.salon = kwargs.pop('salon', None)
+        super().__init__(*args, **kwargs)
+        if self.salon:
+            self.fields['user'].queryset = CustomUser.objects.exclude(
+                id__in=SalonPermission.objects.filter(salon=self.salon).values_list('user_id', flat=True)
+            )
+        
+        # Add HTMX attributes for real-time updates
+        self.fields['user'].widget.attrs.update({
+            'hx-post': 'update-permissions',
+            'hx-trigger': 'change',
+            'hx-target': '#permission-list',
+        })
+        self.fields['permission_type'].widget.attrs.update({
+            'hx-post': 'update-permissions',
+            'hx-trigger': 'change',
+            'hx-target': '#permission-list',
+        })
+        self.fields['action'].widget.attrs.update({
+            'hx-post': 'update-permissions',
+            'hx-trigger': 'change',
+            'hx-target': '#permission-list',
+        })

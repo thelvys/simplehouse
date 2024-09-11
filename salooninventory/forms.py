@@ -1,163 +1,199 @@
 from django import forms
 from django.utils.translation import gettext_lazy as _
+from django.core.exceptions import ValidationError
 from .models import Item, ItemUsed, ItemPurchase
 from saloonservices.models import Hairstyle
 from saloon.models import Salon
 from accounts.models import Barber
 from saloonfinance.models import Currency, CashRegister
+from config.permissions import is_salon_owner, is_salon_manager, is_assigned_barber
 
-class ItemForm(forms.ModelForm):
+class BootstrapFormMixin:
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name, field in self.fields.items():
+            if isinstance(field.widget, (forms.TextInput, forms.NumberInput, forms.EmailInput, forms.URLInput, forms.DateInput)):
+                field.widget.attrs.update({'class': 'form-control'})
+            elif isinstance(field.widget, forms.Select):
+                field.widget.attrs.update({'class': 'form-select'})
+            elif isinstance(field.widget, forms.Textarea):
+                field.widget.attrs.update({'class': 'form-control', 'rows': 3})
+            elif isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs.update({'class': 'form-check-input'})
+            
+            # Add HTMX attributes for real-time validation
+            field.widget.attrs.update({
+                'hx-post': 'validate-field',
+                'hx-trigger': 'blur',
+                'hx-target': f'#{field_name}-errors',
+            })
+
+class ItemForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Item
         fields = ['name', 'item_purpose', 'price', 'currency', 'salon', 'current_stock']
         widgets = {
-            'name': forms.TextInput(attrs={'class': 'form-control'}),
             'item_purpose': forms.SelectMultiple(attrs={'class': 'form-select'}),
-            'price': forms.NumberInput(attrs={'class': 'form-control'}),
-            'currency': forms.Select(attrs={'class': 'form-select'}),
-            'salon': forms.Select(attrs={'class': 'form-select'}),
-            'current_stock': forms.NumberInput(attrs={'class': 'form-control'}),
         }
 
-    def clean_price(self):
-        price = self.cleaned_data.get('price')
-        if price < 0:
-            raise forms.ValidationError(_("Price cannot be negative."))
-        return price
-
-class ItemUsedForm(forms.ModelForm):
-    class Meta:
-        model = ItemUsed
-        fields = ['item', 'shave', 'barber', 'quantity', 'note', 'salon']
-        widgets = {
-            'item': forms.Select(attrs={'class': 'form-select'}),
-            'shave': forms.Select(attrs={'class': 'form-select'}),
-            'barber': forms.Select(attrs={'class': 'form-select'}),
-            'quantity': forms.NumberInput(attrs={'class': 'form-control'}),
-            'note': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
-            'salon': forms.Select(attrs={'class': 'form-select'}),
-        }
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        if self.user:
+            self.fields['salon'].queryset = Salon.objects.filter(owner=self.user)
+            self.fields['item_purpose'].queryset = Hairstyle.objects.filter(salon__owner=self.user)
 
     def clean(self):
         cleaned_data = super().clean()
-        item = cleaned_data.get('item')
-        quantity = cleaned_data.get('quantity')
-        shave = cleaned_data.get('shave')
-
-        if item and quantity:
-            if quantity <= 0:
-                raise forms.ValidationError(_("Quantity must be positive."))
-            if item.current_stock < quantity:
-                raise forms.ValidationError(_("Not enough items in stock."))
-        
-        if shave and shave.status != 'COMPLETED':
-            raise forms.ValidationError(_("Items can only be used for completed shaves."))
-
+        salon = cleaned_data.get('salon')
+        if self.user and salon:
+            if not (is_salon_owner(self.user, salon) or is_salon_manager(self.user, salon)):
+                raise ValidationError(_("You don't have permission to manage inventory items for this salon."))
         return cleaned_data
 
-class ItemPurchaseForm(forms.ModelForm):
+class ItemUsedForm(BootstrapFormMixin, forms.ModelForm):
+    class Meta:
+        model = ItemUsed
+        fields = ['item', 'shave', 'barber', 'quantity', 'note', 'salon']
+
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        if self.user:
+            self.fields['salon'].queryset = Salon.objects.filter(owner=self.user)
+            self.fields['item'].queryset = Item.objects.filter(salon__owner=self.user)
+            self.fields['barber'].queryset = Barber.objects.filter(salon__owner=self.user)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        salon = cleaned_data.get('salon')
+        if self.user and salon:
+            if not (is_salon_owner(self.user, salon) or is_salon_manager(self.user, salon) or is_assigned_barber(self.user, salon)):
+                raise ValidationError(_("You don't have permission to use inventory items for this salon."))
+        return cleaned_data
+
+class ItemPurchaseForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = ItemPurchase
         fields = ['item', 'quantity', 'purchase_price', 'currency', 'purchase_date', 'supplier', 'cashregister', 'salon']
         widgets = {
-            'item': forms.Select(attrs={'class': 'form-select'}),
-            'quantity': forms.NumberInput(attrs={'class': 'form-control'}),
-            'purchase_price': forms.NumberInput(attrs={'class': 'form-control'}),
-            'currency': forms.Select(attrs={'class': 'form-select'}),
-            'purchase_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'supplier': forms.TextInput(attrs={'class': 'form-control'}),
-            'cashregister': forms.Select(attrs={'class': 'form-select'}),
-            'salon': forms.Select(attrs={'class': 'form-select'}),
+            'purchase_date': forms.DateInput(attrs={'type': 'date'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        if self.user:
+            self.fields['salon'].queryset = Salon.objects.filter(owner=self.user)
+            self.fields['item'].queryset = Item.objects.filter(salon__owner=self.user)
+            self.fields['cashregister'].queryset = CashRegister.objects.filter(salon__owner=self.user)
 
     def clean(self):
         cleaned_data = super().clean()
-        purchase_price = cleaned_data.get('purchase_price')
-        quantity = cleaned_data.get('quantity')
-
-        if purchase_price and purchase_price <= 0:
-            raise forms.ValidationError(_("Purchase price must be positive."))
-        if quantity and quantity <= 0:
-            raise forms.ValidationError(_("Quantity must be positive."))
-
+        salon = cleaned_data.get('salon')
+        if self.user and salon:
+            if not (is_salon_owner(self.user, salon) or is_salon_manager(self.user, salon)):
+                raise ValidationError(_("You don't have permission to purchase inventory items for this salon."))
         return cleaned_data
 
-class ItemSearchForm(forms.Form):
+class ItemSearchForm(BootstrapFormMixin, forms.Form):
     name = forms.CharField(
         label=_("Item Name"),
         max_length=255,
         required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': _("Search by name...")})
+        widget=forms.TextInput(attrs={'placeholder': _("Search by name..."), 'hx-get': '/inventory/items/', 'hx-trigger': 'keyup changed delay:500ms', 'hx-target': '#item-list'})
     )
     hairstyle = forms.ModelChoiceField(
         label=_("Hairstyle"),
         queryset=Hairstyle.objects.all(),
         required=False,
-        widget=forms.Select(attrs={'class': 'form-select'})
+        widget=forms.Select(attrs={'hx-get': '/inventory/items/', 'hx-trigger': 'change', 'hx-target': '#item-list'})
     )
     salon = forms.ModelChoiceField(
         label=_("Salon"),
         queryset=Salon.objects.all(),
         required=False,
-        widget=forms.Select(attrs={'class': 'form-select'})
+        widget=forms.Select(attrs={'hx-get': '/inventory/items/', 'hx-trigger': 'change', 'hx-target': '#item-list'})
     )
 
-class ItemUsedSearchForm(forms.Form):
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        if self.user:
+            self.fields['salon'].queryset = Salon.objects.filter(owner=self.user)
+            self.fields['hairstyle'].queryset = Hairstyle.objects.filter(salon__owner=self.user)
+
+class ItemUsedSearchForm(BootstrapFormMixin, forms.Form):
     item = forms.ModelChoiceField(
         label=_("Item"),
         queryset=Item.objects.all(),
         required=False,
-        widget=forms.Select(attrs={'class': 'form-select'})
+        widget=forms.Select(attrs={'hx-get': '/inventory/items-used/', 'hx-trigger': 'change', 'hx-target': '#item-used-list'})
     )
     barber = forms.ModelChoiceField(
         label=_("Barber"),
         queryset=Barber.objects.all(),
         required=False,
-        widget=forms.Select(attrs={'class': 'form-select'})
+        widget=forms.Select(attrs={'hx-get': '/inventory/items-used/', 'hx-trigger': 'change', 'hx-target': '#item-used-list'})
     )
     start_date = forms.DateField(
         label=_("Start Date"),
         required=False,
-        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
+        widget=forms.DateInput(attrs={'type': 'date', 'hx-get': '/inventory/items-used/', 'hx-trigger': 'change', 'hx-target': '#item-used-list'})
     )
     end_date = forms.DateField(
         label=_("End Date"),
         required=False,
-        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
+        widget=forms.DateInput(attrs={'type': 'date', 'hx-get': '/inventory/items-used/', 'hx-trigger': 'change', 'hx-target': '#item-used-list'})
     )
     salon = forms.ModelChoiceField(
         label=_("Salon"),
         queryset=Salon.objects.all(),
         required=False,
-        widget=forms.Select(attrs={'class': 'form-select'})
+        widget=forms.Select(attrs={'hx-get': '/inventory/items-used/', 'hx-trigger': 'change', 'hx-target': '#item-used-list'})
     )
 
-class ItemPurchaseSearchForm(forms.Form):
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        if self.user:
+            self.fields['salon'].queryset = Salon.objects.filter(owner=self.user)
+            self.fields['item'].queryset = Item.objects.filter(salon__owner=self.user)
+            self.fields['barber'].queryset = Barber.objects.filter(salon__owner=self.user)
+
+class ItemPurchaseSearchForm(BootstrapFormMixin, forms.Form):
     item = forms.ModelChoiceField(
         label=_("Item"),
         queryset=Item.objects.all(),
         required=False,
-        widget=forms.Select(attrs={'class': 'form-select'})
+        widget=forms.Select(attrs={'hx-get': '/inventory/purchases/', 'hx-trigger': 'change', 'hx-target': '#purchase-list'})
     )
     supplier = forms.CharField(
         label=_("Supplier"),
         max_length=255,
         required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': _("Search by supplier...")})
+        widget=forms.TextInput(attrs={'placeholder': _("Search by supplier..."), 'hx-get': '/inventory/purchases/', 'hx-trigger': 'keyup changed delay:500ms', 'hx-target': '#purchase-list'})
     )
     start_date = forms.DateField(
         label=_("Start Date"),
         required=False,
-        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
+        widget=forms.DateInput(attrs={'type': 'date', 'hx-get': '/inventory/purchases/', 'hx-trigger': 'change', 'hx-target': '#purchase-list'})
     )
     end_date = forms.DateField(
         label=_("End Date"),
         required=False,
-        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
+        widget=forms.DateInput(attrs={'type': 'date', 'hx-get': '/inventory/purchases/', 'hx-trigger': 'change', 'hx-target': '#purchase-list'})
     )
     salon = forms.ModelChoiceField(
         label=_("Salon"),
         queryset=Salon.objects.all(),
         required=False,
-        widget=forms.Select(attrs={'class': 'form-select'})
+        widget=forms.Select(attrs={'hx-get': '/inventory/purchases/', 'hx-trigger': 'change', 'hx-target': '#purchase-list'})
     )
+
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        if self.user:
+            self.fields['salon'].queryset = Salon.objects.filter(owner=self.user)
+            self.fields['item'].queryset = Item.objects.filter(salon__owner=self.user)

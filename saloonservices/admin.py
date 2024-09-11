@@ -6,7 +6,7 @@ from .models import Hairstyle, Shave, HairstyleTariffHistory
 class HairstyleAdmin(admin.ModelAdmin):
     list_display = ('name', 'current_tariff', 'currency', 'salon')
     list_filter = ('salon', 'currency')
-    search_fields = ('name',)
+    search_fields = ('name', 'salon__name')
     ordering = ('name',)
 
     fieldsets = (

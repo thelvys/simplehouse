@@ -16,12 +16,15 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.views.generic import RedirectView
 
 urlpatterns = [
+    path('', RedirectView.as_view(pattern_name='commonapp:home'), name='home'),
     path('admin/', admin.site.urls),
-    path('accounts/', include('accounts.urls')),
-    path('saloon/', include('saloon.urls')),
+    path('accounts/', include('accounts.urls', namespace='accounts')),
+    path('common/', include('commonapp.urls', namespace='commonapp')),
+    path('saloon/', include('saloon.urls', namespace='saloon')), 
     path('finance/', include('saloonfinance.urls', namespace='saloonfinance')),
-    path('inventory/', include('salooninventory.urls', namespace='salooninventory')),
     path('services/', include('saloonservices.urls', namespace='saloonservices')),
+    path('inventory/', include('salooninventory.urls', namespace='salooninventory')),
 ]

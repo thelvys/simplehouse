@@ -5,12 +5,12 @@ from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from django.db.models.signals import post_save, pre_delete
 from django.dispatch import receiver
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError, PermissionDenied
 
 from commonapp.models import TimestampMixin, Currency
-from accounts.models import Barber, Client
-from saloon.models import Salon
+from saloon.models import Salon, Barber, Client
 from saloonfinance.models import CashRegister
+from config.permissions import is_salon_owner, is_assigned_barber
 
 class HairstyleTariffHistory(TimestampMixin):
     hairstyle = models.ForeignKey('Hairstyle', on_delete=models.CASCADE, related_name='tariff_history', verbose_name=_("Hairstyle"))
@@ -28,7 +28,7 @@ class HairstyleTariffHistory(TimestampMixin):
 class Hairstyle(TimestampMixin):
     name = models.CharField(_("Name"), max_length=255)
     current_tariff = models.DecimalField(_("Current Tariff"), max_digits=19, decimal_places=2, default=0)
-    currency = models.ForeignKey('Currency', on_delete=models.SET_DEFAULT, default=Currency.get_default, verbose_name=_("Currency"))
+    currency = models.ForeignKey(Currency, on_delete=models.SET_DEFAULT, default=Currency.get_default, verbose_name=_("Currency"))
     salon = models.ForeignKey(Salon, on_delete=models.CASCADE, related_name='hairstyles', verbose_name=_("Salon"))
 
     def __str__(self):
@@ -39,6 +39,10 @@ class Hairstyle(TimestampMixin):
             raise ValidationError(_("Current tariff cannot be negative."))
 
     def save(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
+        if user:
+            if not (is_salon_owner(user, self.salon) or is_assigned_barber(user, self.salon)):
+                raise PermissionDenied(_("You don't have permission to manage hairstyles for this salon."))
         is_new = self.pk is None
         super().save(*args, **kwargs)
         if is_new or 'current_tariff' in kwargs.get('update_fields', []):
@@ -68,7 +72,7 @@ class Shave(TimestampMixin):
     barber = models.ForeignKey(Barber, on_delete=models.CASCADE, related_name='shaves', verbose_name=_("Barber"))
     hairstyle = models.ForeignKey(Hairstyle, on_delete=models.CASCADE, related_name='shaves', verbose_name=_("Hairstyle"))
     amount = models.DecimalField(_("Amount"), max_digits=19, decimal_places=2, default=0)
-    currency = models.ForeignKey('Currency', on_delete=models.SET_DEFAULT, default=Currency.get_default, related_name='shaves', verbose_name=_("Currency"))
+    currency = models.ForeignKey(Currency, on_delete=models.SET_DEFAULT, default=Currency.get_default, related_name='shaves', verbose_name=_("Currency"))
     exchange_rate = models.DecimalField(_("Exchange rate"), max_digits=10, decimal_places=4, default=1.0)
     amount_in_default_currency = models.DecimalField(_("Amount in default currency"), max_digits=19, decimal_places=2, default=0)
     client = models.ForeignKey(Client, on_delete=models.SET_NULL, null=True, blank=True, related_name='shaves', verbose_name=_("Client"))
@@ -85,6 +89,10 @@ class Shave(TimestampMixin):
             raise ValidationError(_("Amount cannot be negative."))
 
     def save(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
+        if user:
+            if not (is_salon_owner(user, self.salon) or is_assigned_barber(user, self.salon)):
+                raise PermissionDenied(_("You don't have permission to manage shaves for this salon."))
         if self.currency != Currency.get_default():
             self.amount_in_default_currency = self.amount / self.exchange_rate
         else:

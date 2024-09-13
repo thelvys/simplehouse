@@ -3,10 +3,9 @@ from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
 from .models import Item, ItemUsed, ItemPurchase
 from saloonservices.models import Hairstyle
-from saloon.models import Salon
-from accounts.models import Barber
-from saloonfinance.models import Currency, CashRegister
-from config.permissions import is_salon_owner, is_salon_manager, is_assigned_barber
+from saloon.models import Salon, Barber
+from saloonfinance.models import CashRegister
+from config.permissions import is_salon_owner, is_assigned_barber
 
 class BootstrapFormMixin:
     def __init__(self, *args, **kwargs):
@@ -47,7 +46,7 @@ class ItemForm(BootstrapFormMixin, forms.ModelForm):
         cleaned_data = super().clean()
         salon = cleaned_data.get('salon')
         if self.user and salon:
-            if not (is_salon_owner(self.user, salon) or is_salon_manager(self.user, salon)):
+            if not (is_salon_owner(self.user, salon) or is_assigned_barber(self.user, salon)):
                 raise ValidationError(_("You don't have permission to manage inventory items for this salon."))
         return cleaned_data
 
@@ -68,7 +67,7 @@ class ItemUsedForm(BootstrapFormMixin, forms.ModelForm):
         cleaned_data = super().clean()
         salon = cleaned_data.get('salon')
         if self.user and salon:
-            if not (is_salon_owner(self.user, salon) or is_salon_manager(self.user, salon) or is_assigned_barber(self.user, salon)):
+            if not (is_salon_owner(self.user, salon) or is_assigned_barber(self.user, salon) or is_assigned_barber(self.user, salon)):
                 raise ValidationError(_("You don't have permission to use inventory items for this salon."))
         return cleaned_data
 
@@ -92,7 +91,7 @@ class ItemPurchaseForm(BootstrapFormMixin, forms.ModelForm):
         cleaned_data = super().clean()
         salon = cleaned_data.get('salon')
         if self.user and salon:
-            if not (is_salon_owner(self.user, salon) or is_salon_manager(self.user, salon)):
+            if not (is_salon_owner(self.user, salon) or is_assigned_barber(self.user, salon)):
                 raise ValidationError(_("You don't have permission to purchase inventory items for this salon."))
         return cleaned_data
 

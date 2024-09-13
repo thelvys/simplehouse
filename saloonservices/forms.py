@@ -3,8 +3,7 @@ from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import PermissionDenied
 from .models import Hairstyle, Shave, HairstyleTariffHistory
 from commonapp.models import Currency
-from accounts.models import Barber, Client
-from saloon.models import Salon
+from saloon.models import Salon, Barber, Client
 from saloonfinance.models import CashRegister
 from config.permissions import is_salon_owner, is_assigned_barber
 

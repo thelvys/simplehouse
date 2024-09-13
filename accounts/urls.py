@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     SignUpView, CustomLoginView, CustomLogoutView,
     ProfileUpdateView, UserListView, UserDeleteView,
-    validate_field
+    CustomPasswordResetView, CustomPasswordResetConfirmView
 )
 
 app_name = 'accounts'
@@ -14,8 +14,8 @@ urlpatterns = [
     path('profile/', ProfileUpdateView.as_view(), name='profile'),
     path('users/', UserListView.as_view(), name='user_list'),
     path('users/<int:pk>/delete/', UserDeleteView.as_view(), name='user_delete'),
-    path('validate-field/', validate_field, name='validate_field'),
     
-    # HTMX specific paths
-    path('users/search/', UserListView.as_view(), name='user_search'),
+    # Password reset URLs
+    path('password_reset/', CustomPasswordResetView.as_view(), name='password_reset'),
+    path('password_reset/confirm/<uidb64>/<token>/', CustomPasswordResetConfirmView.as_view(), name='password_reset_confirm'),
 ]

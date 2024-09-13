@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% load crispy_forms_tags %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>{% trans "My Salons" %}</h1>
+    
+    <form method="get" class="mb-4">
+        {{ search_form|crispy }}
+        <button type="submit" class="btn btn-primary">{% trans "Search" %}</button>
+    </form>
+
+    <a href="{% url 'saloon:salon_create' %}" class="btn btn-success mb-3">{% trans "Create New Salon" %}</a>
+
+    <ul>
+    {% for salon in salons %}
+        <li>
+            {{ salon.name }}
+            <a href="{% url 'saloon:salon_update' salon.pk %}">{% trans "Edit" %}</a>
+            <a href="{% url 'saloon:salon_delete' salon.pk %}">{% trans "Delete" %}</a>
+            <a href="{% url 'saloon:barber_list' salon.pk %}">{% trans "Barbers" %}</a>
+            <a href="{% url 'saloon:client_list' salon.pk %}">{% trans "Clients" %}</a>
+        </li>
+    {% empty %}
+        <li>{% trans "No salons found." %}</li>
+    {% endfor %}
+    </ul>
+
+    {% include 'saloon/pagination.html' %}
+</div>
+{% endblock %}

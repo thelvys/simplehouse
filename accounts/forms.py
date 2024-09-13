@@ -12,12 +12,12 @@ class BootstrapFormMixin:
             elif isinstance(field.widget, forms.CheckboxInput):
                 field.widget.attrs.update({'class': 'form-check-input'})
             
-            # Add HTMX attributes for real-time validation
-            field.widget.attrs.update({
-                'hx-post': 'validate-field',
-                'hx-trigger': 'blur',
-                'hx-target': f'#{field_name}-errors',
-            })
+            # Supprimons les attributs HTMX
+            # field.widget.attrs.update({
+            #     'hx-post': 'validate-field',
+            #     'hx-trigger': 'blur',
+            #     'hx-target': f'#{field_name}-errors',
+            # })
 
 class CustomUserCreationForm(BootstrapFormMixin, UserCreationForm):
     email = forms.EmailField(
@@ -67,8 +67,9 @@ class CustomUserSearchForm(BootstrapFormMixin, forms.Form):
         required=False,
         widget=forms.TextInput(attrs={
             'placeholder': _("Search users..."),
-            'hx-post': 'search-users',
-            'hx-trigger': 'keyup changed delay:500ms',
-            'hx-target': '#user-list',
+            # Supprimons les attributs HTMX
+            # 'hx-post': 'search-users',
+            # 'hx-trigger': 'keyup changed delay:500ms',
+            # 'hx-target': '#user-list',
         })
     )

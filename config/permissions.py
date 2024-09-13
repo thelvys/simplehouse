@@ -1,6 +1,6 @@
 from django.contrib.auth.mixins import UserPassesTestMixin, LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
-from saloon.models import Salon, SalonAssignment, SalonPermission
+from saloon.models import Salon, SalonPermission
 
 class BasePermissionMixin(UserPassesTestMixin):
     def handle_no_permission(self):
@@ -18,7 +18,7 @@ class SalonOwnerPermissionMixin(BasePermissionMixin):
 class BarberPermissionMixin(BasePermissionMixin):
     def test_func(self):
         salon_id = self.kwargs.get('pk') or self.kwargs.get('salon_id')
-        return self.request.user.is_barber and SalonAssignment.objects.filter(
+        return self.request.user.is_barber and Salon.objects.filter(
             barber=self.request.user, salon_id=salon_id, is_active=True
         ).exists()
 
@@ -63,7 +63,7 @@ def is_salon_owner(user, salon_id):
     return user.is_salon_owner and Salon.objects.filter(id=salon_id, owner=user).exists()
 
 def is_assigned_barber(user, salon_id):
-    return user.is_barber and SalonAssignment.objects.filter(
+    return user.is_barber and Salon.objects.filter(
         barber=user, salon_id=salon_id, is_active=True
     ).exists()
 
@@ -87,7 +87,11 @@ def assign_owner_permissions(user, salon):
         'can_manage_inventory', 'can_manage_shave', 'can_manage_hairstyle', 'can_manage_barbers'
     ]
     for permission_type in permission_types:
-        assign_salon_permission(user, salon, permission_type)
+        SalonPermission.objects.get_or_create(
+            salon=salon,
+            user=user,
+            permission_type=permission_type
+        )
 
 def assign_barber_permissions(user, salon, permissions):
     for permission in permissions:

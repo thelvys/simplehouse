@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% load crispy_forms_tags %}
+
+{% block title %}{% trans "User List" %}{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2>{% trans "User List" %}</h2>
+    <form method="get" class="mb-4">
+        {{ search_form|crispy }}
+        <button type="submit" class="btn btn-primary">{% trans "Search" %}</button>
+    </form>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>{% trans "Email" %}</th>
+                <th>{% trans "First Name" %}</th>
+                <th>{% trans "Last Name" %}</th>
+                <th>{% trans "Actions" %}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td>{{ user.email }}</td>
+                <td>{{ user.first_name }}</td>
+                <td>{{ user.last_name }}</td>
+                <td>
+                    <a href="{% url 'accounts:user_delete' user.pk %}" class="btn btn-danger btn-sm">{% trans "Delete" %}</a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4">{% trans "No users found." %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% include 'pagination.html' %}
+</div>
+{% endblock %}

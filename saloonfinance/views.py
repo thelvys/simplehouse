@@ -13,7 +13,7 @@ from .forms import (
     CashRegisterSearchForm, PaymentSearchForm, TransalonSearchForm
 )
 from saloon.models import Salon
-from config.permissions import is_salon_owner, is_salon_manager
+from config.permissions import is_salon_owner, is_assigned_barber
 
 class HtmxResponseMixin:
     def form_valid(self, form):
@@ -28,7 +28,7 @@ class HtmxResponseMixin:
 class SalonPermissionMixin:
     def dispatch(self, request, *args, **kwargs):
         self.salon = get_object_or_404(Salon, pk=self.kwargs['salon_id'])
-        if not (is_salon_owner(request.user, self.salon) or is_salon_manager(request.user, self.salon)):
+        if not (is_salon_owner(request.user, self.salon) or is_assigned_barber(request.user, self.salon)):
             raise PermissionDenied(_("You don't have permission to access this salon's finances."))
         return super().dispatch(request, *args, **kwargs)
 

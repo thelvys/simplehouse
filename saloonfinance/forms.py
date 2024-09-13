@@ -3,7 +3,7 @@ from django.utils.translation import gettext_lazy as _
 from .models import CashRegister, Payment, Transalon, PaymentType
 from commonapp.models import Currency
 from saloon.models import Salon, Barber
-from config.permissions import is_salon_owner, is_salon_manager, is_assigned_barber
+from config.permissions import is_salon_owner, is_assigned_barber
 
 class BootstrapFormMixin:
     def __init__(self, *args, **kwargs):
@@ -43,7 +43,7 @@ class CashRegisterForm(BootstrapFormMixin, forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
         if self.user and self.salon:
-            if not (is_salon_owner(self.user, self.salon) or is_salon_manager(self.user, self.salon)):
+            if not (is_salon_owner(self.user, self.salon) or is_assigned_barber(self.user, self.salon)):
                 raise forms.ValidationError(_("You don't have permission to manage cash registers for this salon."))
         return cleaned_data
 
@@ -81,7 +81,7 @@ class PaymentForm(BootstrapFormMixin, forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
         if self.user and self.salon:
-            if not (is_salon_owner(self.user, self.salon) or is_salon_manager(self.user, self.salon)):
+            if not (is_salon_owner(self.user, self.salon) or is_assigned_barber(self.user, self.salon)):
                 raise forms.ValidationError(_("You don't have permission to manage payments for this salon."))
         return cleaned_data
 
@@ -116,7 +116,7 @@ class TransalonForm(BootstrapFormMixin, forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
         if self.user and self.salon:
-            if not (is_salon_owner(self.user, self.salon) or is_salon_manager(self.user, self.salon)):
+            if not (is_salon_owner(self.user, self.salon) or is_assigned_barber(self.user, self.salon)):
                 raise forms.ValidationError(_("You don't have permission to manage transactions for this salon."))
         return cleaned_data
 

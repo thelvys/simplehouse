@@ -71,11 +71,6 @@ class Barber(TimestampMixin):
     start_date = models.DateField(_("Start date"))
     end_date = models.DateField(_("End date"), null=True, blank=True)
     is_active = models.BooleanField(_("Is active"), default=True)
-    can_manage_finance = models.BooleanField(_("Can manage finance"), default=False)
-    can_manage_inventory = models.BooleanField(_("Can manage inventory"), default=False)
-    can_manage_shave = models.BooleanField(_("Can manage shave"), default=False)
-    can_manage_hairstyle = models.BooleanField(_("Can manage hairstyle"), default=False)
-    can_manage_barbers = models.BooleanField(_("Can manage barbers"), default=False)
 
     def __str__(self):
         return self.user.get_full_name()

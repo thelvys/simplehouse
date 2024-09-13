@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block content %}
+<h1>{% trans "Delete Barber" %}</h1>
+<p>{% trans "Are you sure you want to delete the barber" %} "{{ object.user.get_full_name }}"?</p>
+<form method="post">
+    {% csrf_token %}
+    <button type="submit">{% trans "Confirm Delete" %}</button>
+</form>
+<a href="{% url 'saloon:barber_list' object.salon.pk %}">{% trans "Cancel" %}</a>
+{% endblock %}

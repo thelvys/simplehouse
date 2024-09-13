@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% load crispy_forms_tags %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>{% trans "Manage Permissions for" %} {{ salon.name }}</h1>
+    
+    <form method="post">
+        {% csrf_token %}
+        {{ form|crispy }}
+        <button type="submit" class="btn btn-primary">{% trans "Save" %}</button>
+    </form>
+
+    <h2 class="mt-4">{% trans "Current Permissions" %}</h2>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>{% trans "User" %}</th>
+                <th>{% trans "Permission Type" %}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for permission in permissions %}
+            <tr>
+                <td>{{ permission.user.email }}</td>
+                <td>{{ permission.get_permission_type_display }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="2">{% trans "No permissions set." %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <a href="{% url 'saloon:salon_list' %}" class="btn btn-secondary">{% trans "Back to Salon List" %}</a>
+</div>
+{% endblock %}

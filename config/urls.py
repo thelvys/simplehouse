@@ -19,10 +19,9 @@ from django.urls import path, include
 from django.views.generic import RedirectView
 
 urlpatterns = [
-    path('', RedirectView.as_view(pattern_name='commonapp:home'), name='home'),
+    path('', include('commonapp.urls', namespace='commonapp')),
     path('admin/', admin.site.urls),
     path('accounts/', include('accounts.urls', namespace='accounts')),
-    path('common/', include('commonapp.urls', namespace='commonapp')),
     path('saloon/', include('saloon.urls', namespace='saloon')), 
     path('finance/', include('saloonfinance.urls', namespace='saloonfinance')),
     path('services/', include('saloonservices.urls', namespace='saloonservices')),

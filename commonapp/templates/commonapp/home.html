@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load i18n %}
+{% load crispy_forms_tags %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="jumbotron mt-4 text-center">
+        <h1 class="display-4">{{ title }}</h1>
+        <p class="lead">{% trans "Discover the best salons and hairstyles in your area." %}</p>
+    </div>
+
+    {% if user.is_authenticated %}
+        <div class="row mt-5">
+            {% if can_manage_currency %}
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="h5 mb-0">{% trans "Currencies" %}</h2>
+                        </div>
+                        <div class="card-body">
+                            <a href="{% url 'commonapp:currency_list' %}" class="btn btn-primary">{% trans "Manage Currencies" %}</a>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+            
+            {% if can_manage_attachment %}
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="h5 mb-0">{% trans "Attachments" %}</h2>
+                        </div>
+                        <div class="card-body">
+                            <a href="{% url 'commonapp:attachment_list' %}" class="btn btn-primary">{% trans "Manage Attachments" %}</a>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    {% endif %}
+
+    <section class="my-5">
+        <h2 class="text-center mb-4">{% trans "Featured Salons" %}</h2>
+        <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4">
+            {% for salon in featured_salons %}
+                <div class="col">
+                    <div class="card h-100">
+                        {% if salon.image %}
+                            <img src="{{ salon.image.url }}" class="card-img-top img-fluid" alt="{{ salon.name }}">
+                        {% else %}
+                            <img src="{% static 'images/salon_placeholder.jpg' %}" class="card-img-top img-fluid" alt="{{ salon.name }}">
+                        {% endif %}
+                        <div class="card-body">
+                            <h5 class="card-title">{{ salon.name }}</h5>
+                            <p class="card-text">{{ salon.address }}</p>
+                        </div>
+                        <div class="card-footer">
+                            <a href="#" class="btn btn-primary btn-sm w-100">{% trans "View Details" %}</a>
+                        </div>
+                    </div>
+                </div>
+            {% empty %}
+                <div class="col-12">
+                    <p class="text-center">{% trans "No featured salons at the moment." %}</p>
+                </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="my-5">
+        <h2 class="text-center mb-4">{% trans "Popular Hairstyles" %}</h2>
+        <div class="row row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6 g-3">
+            {% for hairstyle in popular_hairstyles %}
+                <div class="col">
+                    <div class="card h-100">
+                        {% if hairstyle.image %}
+                            <img src="{{ hairstyle.image.url }}" class="card-img-top img-fluid" alt="{{ hairstyle.name }}">
+                        {% else %}
+                            <img src="{% static 'images/hairstyle_placeholder.jpg' %}" class="card-img-top img-fluid" alt="{{ hairstyle.name }}">
+                        {% endif %}
+                        <div class="card-body">
+                            <h6 class="card-title text-center">{{ hairstyle.name }}</h6>
+                        </div>
+                    </div>
+                </div>
+            {% empty %}
+                <div class="col-12">
+                    <p class="text-center">{% trans "No popular hairstyles at the moment." %}</p>
+                </div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock %}

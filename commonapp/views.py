@@ -3,9 +3,18 @@ from django.views.generic import ListView, CreateView, UpdateView, DeleteView, T
 from django.urls import reverse_lazy
 from django.http import HttpResponse
 from django.utils.translation import gettext_lazy as _
-from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.utils.decorators import method_decorator
+from django.contrib.auth.decorators import login_required
+from django.views.decorators.csrf import csrf_protect
 from .models import Currency, Attachment
 from .forms import CurrencyForm, AttachmentForm, CurrencySearchForm, AttachmentSearchForm
+from saloon.models import Salon
+from saloonservices.models import Hairstyle
+from config.permissions import (
+    CanManageSalonMixin, CanReadSalonMixin, CanManageFinanceMixin,
+    is_salon_owner, is_assigned_barber
+)
 
 class HomeView(TemplateView):
     template_name = 'commonapp/home.html'
@@ -13,24 +22,34 @@ class HomeView(TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['title'] = _("Welcome to Saloon Management System")
-        # You can add more context data here as needed
+        context['featured_salons'] = Salon.objects.filter(is_active=True)[:5]
+        context['popular_hairstyles'] = Hairstyle.objects.all().order_by('-id')[:6]
+        
+        user = self.request.user
+        if user.is_authenticated:
+            salon_id = self.kwargs.get('salon_id')
+            context['can_manage_currency'] = is_salon_owner(user, salon_id) or is_assigned_barber(user, salon_id)
+            context['can_manage_attachment'] = is_salon_owner(user, salon_id) or is_assigned_barber(user, salon_id)
+        
         return context
 
-class HtmxResponseMixin:
-    def form_valid(self, form):
-        self.object = form.save()
-        if self.request.htmx:
-            return HttpResponse(self.get_htmx_response())
-        return super().form_valid(form)
+    @method_decorator(csrf_protect)
+    def dispatch(self, request, *args, **kwargs):
+        return super().dispatch(request, *args, **kwargs)
 
-    def get_htmx_response(self):
-        return ""
+    def get(self, request, *args, **kwargs):
+        context = self.get_context_data(**kwargs)
+        return self.render_to_response(context)
 
-class CurrencyListView(LoginRequiredMixin, ListView):
+    @method_decorator(login_required)
+    def post(self, request, *args, **kwargs):
+        # action that need authentication
+        pass
+
+class CurrencyListView(LoginRequiredMixin, CanManageFinanceMixin, ListView):
     model = Currency
-    template_name = 'commonapp/currency_list.html'
+    template_name = 'commonapp/partials/currency_list.html'
     context_object_name = 'currencies'
-    paginate_by = 10
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -52,43 +71,31 @@ class CurrencyListView(LoginRequiredMixin, ListView):
         context['search_form'] = CurrencySearchForm(self.request.GET)
         return context
 
-class CurrencyCreateView(LoginRequiredMixin, PermissionRequiredMixin, HtmxResponseMixin, CreateView):
+class CurrencyCreateView(LoginRequiredMixin, CanManageFinanceMixin, CreateView):
     model = Currency
     form_class = CurrencyForm
-    template_name = 'commonapp/currency_form.html'
+    template_name = 'commonapp/partials/currency_form.html'
     success_url = reverse_lazy('commonapp:currency_list')
-    permission_required = 'commonapp.add_currency'
 
-    def get_htmx_response(self):
-        return _("<div class='alert alert-success' role='alert'>Currency created successfully.</div>")
-
-class CurrencyUpdateView(LoginRequiredMixin, PermissionRequiredMixin, HtmxResponseMixin, UpdateView):
+class CurrencyUpdateView(LoginRequiredMixin, CanManageFinanceMixin, UpdateView):
     model = Currency
     form_class = CurrencyForm
-    template_name = 'commonapp/currency_form.html'
+    template_name = 'commonapp/partials/currency_form.html'
     success_url = reverse_lazy('commonapp:currency_list')
-    permission_required = 'commonapp.change_currency'
 
-    def get_htmx_response(self):
-        return _("<div class='alert alert-success' role='alert'>Currency updated successfully.</div>")
-
-class CurrencyDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
+class CurrencyDeleteView(LoginRequiredMixin, CanManageFinanceMixin, DeleteView):
     model = Currency
     success_url = reverse_lazy('commonapp:currency_list')
-    permission_required = 'commonapp.delete_currency'
 
     def delete(self, request, *args, **kwargs):
         self.object = self.get_object()
         self.object.delete()
-        if request.htmx:
-            return HttpResponse(_("<div class='alert alert-success' role='alert'>Currency deleted successfully.</div>"))
-        return super().delete(request, *args, **kwargs)
+        return HttpResponse(status=204)
 
-class AttachmentListView(LoginRequiredMixin, ListView):
+class AttachmentListView(LoginRequiredMixin, CanReadSalonMixin, ListView):
     model = Attachment
-    template_name = 'commonapp/attachment_list.html'
+    template_name = 'commonapp/partials/attachment_list.html'
     context_object_name = 'attachments'
-    paginate_by = 10
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -113,35 +120,23 @@ class AttachmentListView(LoginRequiredMixin, ListView):
         context['search_form'] = AttachmentSearchForm(self.request.GET)
         return context
 
-class AttachmentCreateView(LoginRequiredMixin, PermissionRequiredMixin, HtmxResponseMixin, CreateView):
+class AttachmentCreateView(LoginRequiredMixin, CanManageSalonMixin, CreateView):
     model = Attachment
     form_class = AttachmentForm
-    template_name = 'commonapp/attachment_form.html'
+    template_name = 'commonapp/partials/attachment_form.html'
     success_url = reverse_lazy('commonapp:attachment_list')
-    permission_required = 'commonapp.add_attachment'
 
-    def get_htmx_response(self):
-        return _("<div class='alert alert-success' role='alert'>Attachment created successfully.</div>")
-
-class AttachmentUpdateView(LoginRequiredMixin, PermissionRequiredMixin, HtmxResponseMixin, UpdateView):
+class AttachmentUpdateView(LoginRequiredMixin, CanManageSalonMixin, UpdateView):
     model = Attachment
     form_class = AttachmentForm
-    template_name = 'commonapp/attachment_form.html'
+    template_name = 'commonapp/partials/attachment_form.html'
     success_url = reverse_lazy('commonapp:attachment_list')
-    permission_required = 'commonapp.change_attachment'
 
-    def get_htmx_response(self):
-        return _("<div class='alert alert-success' role='alert'>Attachment updated successfully.</div>")
-
-class AttachmentDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
+class AttachmentDeleteView(LoginRequiredMixin, CanManageSalonMixin, DeleteView):
     model = Attachment
     success_url = reverse_lazy('commonapp:attachment_list')
-    permission_required = 'commonapp.delete_attachment'
 
     def delete(self, request, *args, **kwargs):
         self.object = self.get_object()
         self.object.delete()
-        if request.htmx:
-            return HttpResponse(_("<div class='alert alert-success' role='alert'>Attachment deleted successfully.</div>"))
-        return super().delete(request, *args, **kwargs)
-
+        return HttpResponse(status=204)

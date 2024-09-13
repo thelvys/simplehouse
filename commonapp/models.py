@@ -27,13 +27,12 @@ class Currency(TimestampMixin):
     
     def save(self, *args, **kwargs):
         if self.is_default:
-            Currency.objects.filter(salon=self.salon, is_default=True).update(is_default=False)
+            Currency.objects.filter(is_default=True).exclude(pk=self.pk).update(is_default=False)
         super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = _("Currency")
         verbose_name_plural = _("Currencies")
-        unique_together = ['code', 'salon']
 
 class Attachment(TimestampMixin):
     file = models.FileField(_("File"), upload_to="attachments/")

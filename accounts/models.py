@@ -1,15 +1,9 @@
-''' Models for the accounts app '''
-
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
-from django.utils import timezone 
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.core.mail import send_mail
-
 from commonapp.models import TimestampMixin
-
-from config import settings
-
 
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
@@ -32,7 +26,6 @@ class CustomUserManager(BaseUserManager):
             raise ValueError(_('Superuser must have is_superuser=True.'))
         
         return self.create_user(email, password, **extra_fields)
-
 
 class CustomUser(AbstractBaseUser, PermissionsMixin, TimestampMixin):
     email = models.EmailField(_('email address'), unique=True)
@@ -66,33 +59,8 @@ class CustomUser(AbstractBaseUser, PermissionsMixin, TimestampMixin):
 
     @property
     def is_salon_owner(self):
-        return hasattr(self, 'salon_owner')
+        return self.owned_salons.exists()
 
     @property
     def is_barber(self):
         return hasattr(self, 'barber')
-
-    def has_salon_permission(self, salon, permission_type):
-        from saloon.models import SalonPermission
-        return SalonPermission.objects.filter(
-            salon=salon,
-            user=self,
-            permission_type=permission_type
-        ).exists()
-
-    def assign_salon_permission(self, salon, permission_type):
-        from saloon.models import SalonPermission
-        SalonPermission.objects.get_or_create(
-            salon=salon,
-            user=self,
-            permission_type=permission_type
-        )
-
-    def remove_salon_permission(self, salon, permission_type):
-        from saloon.models import SalonPermission
-        SalonPermission.objects.filter(
-            salon=salon,
-            user=self,
-            permission_type=permission_type
-        ).delete()
-

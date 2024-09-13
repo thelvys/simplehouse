@@ -39,7 +39,6 @@ class AttachmentForm(forms.ModelForm):
     def clean_file(self):
         file = self.cleaned_data.get('file')
         if file:
-            # You can add file size validation here if needed
             max_size = 5 * 1024 * 1024  # 5 MB
             if file.size > max_size:
                 raise forms.ValidationError(_("File size must be no more than 5 MB."))

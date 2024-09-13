@@ -87,6 +87,8 @@ class Shave(TimestampMixin):
     def clean(self):
         if self.amount < 0:
             raise ValidationError(_("Amount cannot be negative."))
+        if not self.barber or not self.hairstyle or not self.salon:
+            raise ValidationError(_("Barber, hairstyle, and salon are required fields."))
 
     def save(self, *args, **kwargs):
         user = kwargs.pop('user', None)

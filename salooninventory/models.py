@@ -12,7 +12,7 @@ from commonapp.models import TimestampMixin, Currency
 from saloon.models import Salon, Barber
 from saloonfinance.models import CashRegister
 from saloonservices.models import Shave, Hairstyle
-from config.permissions import is_salon_owner, is_assigned_barber, is_salon_manager
+from config.permissions import is_salon_owner, is_assigned_barber
 
 class Item(TimestampMixin):
     name = models.CharField(_("Name"), max_length=255)
@@ -29,7 +29,7 @@ class Item(TimestampMixin):
     
     def save(self, *args, **kwargs):
         user = kwargs.pop('user', None)
-        if user and not (is_salon_owner(user, self.salon) or is_salon_manager(user, self.salon)):
+        if user and not (is_salon_owner(user, self.salon) or is_assigned_barber(user, self.salon)):
             raise PermissionDenied(_("You don't have permission to manage inventory items for this salon."))
         
         if self.currency != Currency.get_default():
@@ -82,7 +82,7 @@ class ItemUsed(TimestampMixin):
 
     def save(self, *args, **kwargs):
         user = kwargs.pop('user', None)
-        if user and not (is_salon_owner(user, self.salon) or is_salon_manager(user, self.salon) or is_assigned_barber(user, self.salon)):
+        if user and not (is_salon_owner(user, self.salon) or is_assigned_barber(user, self.salon) or is_assigned_barber(user, self.salon)):
             raise PermissionDenied(_("You don't have permission to use inventory items for this salon."))
         
         self.clean()
@@ -109,7 +109,7 @@ class ItemPurchase(TimestampMixin):
 
     def save(self, *args, **kwargs):
         user = kwargs.pop('user', None)
-        if user and not (is_salon_owner(user, self.salon) or is_salon_manager(user, self.salon)):
+        if user and not (is_salon_owner(user, self.salon) or is_assigned_barber(user, self.salon)):
             raise PermissionDenied(_("You don't have permission to purchase inventory items for this salon."))
         
         if self.currency != Currency.get_default():

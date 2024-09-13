@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'crispy_forms',
     'crispy_bootstrap5',
     'mptt',
     'accounts',
@@ -53,7 +54,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.auth.middleware.LoginRequiredMiddleware',
+    #'django.contrib.auth.middleware.LoginRequiredMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -63,7 +64,7 @@ ROOT_URLCONF = 'config.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -137,11 +138,13 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'accounts.CustomUser'
 
-LOGIN_URL = 'login'
-LOGIN_REQUIRED_EXEMPT_VIEWS = [
-    'login',
-    'register_client',
-    'register_barber',
-    'home',
-    # Ajoutez d'autres noms de vue qui doivent être accessibles sans authentification
-]
+LOGIN_REDIRECT_URL = 'commonapp:home'
+LOGOUT_REDIRECT_URL = 'commonapp:home'
+#LOGIN_REQUIRED_IGNORE_VIEW_NAMES = [
+#    'commonapp:home',
+#    'accounts:login',
+#    'accounts:signup',
+#]
+
+CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
+CRISPY_TEMPLATE_PACK = "bootstrap5"
